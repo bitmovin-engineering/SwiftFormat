@@ -56,7 +56,8 @@ final class DefaultReporter: Reporter {
     func report(_ changes: [Formatter.Change]) {
         if !quietMode {
             for change in changes {
-                CLI.print(change.description(asError: !lenient), lenient ? .warning : .error)
+                let asError = change.rule.severity == .error || (change.rule.severity == nil && !lenient)
+                CLI.print(change.description(asError: asError), asError ? .error : .warning)
             }
         }
     }

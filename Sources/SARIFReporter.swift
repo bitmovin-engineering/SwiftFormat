@@ -119,7 +119,7 @@ private struct Result: Encodable {
 
     init(_ change: Formatter.Change) {
         ruleId = change.rule.name
-        level = .warning
+        level = change.rule.severity == .error ? .error : .warning
         message = Message(change)
         locations = [Location(change)]
     }
@@ -184,8 +184,8 @@ private struct Region: Encodable {
 
     init(_ change: Formatter.Change) {
         startLine = change.line
-        startColumn = 1
+        startColumn = change.column ?? 1
         endLine = change.line
-        endColumn = 2
+        endColumn = startColumn + 1
     }
 }

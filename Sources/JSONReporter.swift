@@ -68,13 +68,17 @@ final class JSONReporter: Reporter {
 private struct ReportItem: Encodable {
     let file: String?
     let line: Int
+    let column: Int?
     let reason: String
     let ruleID: String
+    let severity: String?
 
     init(_ change: Formatter.Change) {
         file = change.filePath
         line = change.line
+        column = change.column
         reason = change.help
         ruleID = change.rule.name
+        severity = change.rule.severity?.rawValue
     }
 }
