@@ -80,8 +80,8 @@ private extension XMLReporter {
 
     func generateChange(_ change: Formatter.Change) -> String {
         let line = change.line
-        let col = 0
-        let severity = "warning"
+        let col = change.column ?? 0
+        let severity = change.rule.severity?.rawValue ?? "warning"
         let reason = escapeXML(change.help)
         let rule = escapeXML(change.rule.name)
         return [

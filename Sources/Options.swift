@@ -1337,6 +1337,8 @@ public struct Options {
     public var fileOptions: FileOptions?
     public var formatOptions: FormatOptions?
     public var rules: Set<String>?
+    var customRulesURL: URL?
+    var customRules: CustomRules
     public var configURLs: [URL]?
     public var lint: Bool
     public var filterOptions: [Glob: [String: String]]
@@ -1359,6 +1361,8 @@ public struct Options {
         self.fileOptions = fileOptions
         self.formatOptions = formatOptions
         self.rules = rules
+        customRulesURL = nil
+        customRules = CustomRules()
         self.configURLs = configURLs
         self.lint = lint
         self.filterOptions = filterOptions

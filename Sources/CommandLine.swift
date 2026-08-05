@@ -202,6 +202,7 @@ func printHelp(as type: CLI.OutputType) {
     --script-input     Read Xcode SCRIPT_INPUT_FILE* environment variables as files
     --config           Path(s) to configuration file(s) containing rules and options
     --base-config      Like --config, but local .swiftformat files aren't ignored
+    --custom-rules     Path to a SwiftLint-style YAML or JSON file containing custom_rules
     --infer-options    Instead of formatting input, use it to infer format options
     --output           Output path for formatted file(s) (defaults to input path)
     --exclude          Comma-delimited list of ignored paths (supports glob syntax)
@@ -345,6 +346,9 @@ private func processConfigFile(at path: String, for argumentName: String, in dir
             } else {
                 config["unexclude"] = unexcluded.map(\.description).sorted().joined(separator: ",")
             }
+        }
+        if let customRules = config["custom-rules"] {
+            config["custom-rules"] = expandPath(customRules, in: configDirectory).path
         }
         return config
     }
@@ -521,7 +525,7 @@ func processArguments(_ args: [String], environment: [String: String] = [:], in 
 
         // FormatOption overrides
         var overrides = [String: String]()
-        for key in formattingArguments + rulesArguments {
+        for key in formattingArguments + rulesArguments + customRulesArguments {
             overrides[key] = args[key]
         }
 
@@ -531,6 +535,9 @@ func processArguments(_ args: [String], environment: [String: String] = [:], in 
         // Options
         var options = try Options(args, filterOptions: filterOptions, in: directory)
         options.configURLs = configURLs.isEmpty ? nil : configURLs
+        if overrides["custom-rules"] != nil {
+            overrides["custom-rules"] = options.customRulesURL?.path
+        }
 
         // Show rules
         if showRules {
@@ -811,11 +818,11 @@ func processArguments(_ args: [String], environment: [String: String] = [:], in 
                         options.formatOptions?.fileInfo = fileInfo
                         try options.addFilterArguments(path: stdinURL.path)
                     }
-                    let outputTokens = try applyRules(
+                    let result = try applyRules(
                         input, options: options, lineRange: lineRange,
                         verbose: verbose, lint: lint, reporter: reporter
                     )
-                    let output = sourceCode(for: outputTokens)
+                    let output = sourceCode(for: result.tokens)
                     if let outputURL, !useStdout {
                         if !dryrun, (try? String(contentsOf: outputURL)) != output {
                             try write(output, to: outputURL)
@@ -823,7 +830,7 @@ func processArguments(_ args: [String], environment: [String: String] = [:], in 
                     } else if !lint {
                         // Write to stdout
                         if printTokens {
-                            let tokensToPrint = dryrun ? tokenize(input) : outputTokens
+                            let tokensToPrint = dryrun ? tokenize(input) : result.tokens
                             try print(OutputTokensData.encodedString(for: tokensToPrint), as: .raw)
                         } else {
                             print(dryrun ? input : output, as: .raw)
@@ -837,7 +844,7 @@ func processArguments(_ args: [String], environment: [String: String] = [:], in 
                         }
                     }
                     let exitCode: ExitCode
-                    if lint, output != input {
+                    if lint, !result.changes.isEmpty {
                         print("Source input did not pass lint check.", as: lenient ? .warning : .error)
                         exitCode = lenient ? .ok : .lintFailure
                     } else if strict, output != input {
@@ -1030,10 +1037,12 @@ func computeHash(_ source: String) -> String {
 }
 
 func applyRules(_ source: String, tokens: [Token]? = nil, options: Options, lineRange: ClosedRange<Int>?,
-                verbose: Bool, lint: Bool, reporter: Reporter?) throws -> [Token]
+                verbose: Bool, lint: Bool, reporter: Reporter?) throws
+    -> (tokens: [Token], changes: [Formatter.Change])
 {
     // Parse source
     var tokens = tokens ?? tokenize(source)
+    let originalTokens = tokens
 
     // Get rules
     let rulesByName = FormatRules.byName
@@ -1053,26 +1062,31 @@ func applyRules(_ source: String, tokens: [Token]? = nil, options: Options, line
         trackChanges: lint || verbose || reporter != nil,
         range: range
     )
+    if lint {
+        changes += options.customRules.lint(originalTokens, options: formatOptions, range: range)
+        changes.sort(by: Formatter.Change.sourceOrder)
+    }
 
     // Display info
     let updatedSource = sourceCode(for: tokens)
-    if lint, updatedSource != source {
+    if lint, !changes.isEmpty {
         reporter?.report(changes)
     }
     if verbose {
         let rulesApplied = changes.reduce(into: Set<String>()) {
             $0.insert($1.rule.name)
         }
-        if rulesApplied.isEmpty || updatedSource == source {
+        if rulesApplied.isEmpty {
             print("-- no changes", as: .success)
         } else {
             let sortedNames = Array(rulesApplied).sorted().formattedList(lastSeparator: "and")
-            print("-- rules applied: \(sortedNames)", as: .success)
+            let action = updatedSource == source ? "violations" : "rules applied"
+            print("-- \(action): \(sortedNames)", as: .success)
         }
     }
 
     // Output
-    return tokens
+    return (tokens, changes)
 }
 
 func processInput(_ inputURLs: [URL],
@@ -1147,7 +1161,10 @@ func processInput(_ inputURLs: [URL],
         let range = lineRange.map { "\($0.lowerBound),\($0.upperBound);" } ?? ""
         // Check cache
         let rules = options.rules ?? defaultRules
-        let configHash = computeHash("\(formatOptions)\(range)\(rules.sorted().joined(separator: ","))")
+        let customRules = options.customRules.cacheKey
+        let configHash = computeHash(
+            "\(formatOptions)\(range)\(rules.sorted().joined(separator: ","))\(customRules)"
+        )
         let cachePrefix = "\(version);\(configHash);"
         let cacheKey: String = {
             var path = inputURL.absoluteURL.path
@@ -1165,6 +1182,7 @@ func processInput(_ inputURLs: [URL],
                 sourceHash = computeHash(input)
             }
             let output: String
+            var lintChangesDetected = false
             if let cacheHash, cacheHash == sourceHash {
                 output = input
                 if verbose {
@@ -1223,18 +1241,27 @@ func processInput(_ inputURLs: [URL],
                     case .lenient, .ignore:
                         // Ignore code blocks that fail to parse
                         if parsingError == nil {
-                            outputTokens = try? applyRules(swiftCodeBlock.text, tokens: inputTokens,
-                                                           options: options, lineRange: lineRange,
-                                                           verbose: verbose, lint: lint, reporter: reporter)
+                            if let result = try? applyRules(
+                                swiftCodeBlock.text, tokens: inputTokens,
+                                options: options, lineRange: lineRange,
+                                verbose: verbose, lint: lint, reporter: reporter
+                            ) {
+                                outputTokens = result.tokens
+                                lintChangesDetected = lintChangesDetected || !result.changes.isEmpty
+                            }
                         }
                     case .strict:
                         if let parsingError {
                             throw parsingError
                         }
 
-                        outputTokens = try applyRules(swiftCodeBlock.text, tokens: inputTokens,
-                                                      options: options, lineRange: lineRange,
-                                                      verbose: verbose, lint: lint, reporter: reporter)
+                        let result = try applyRules(
+                            swiftCodeBlock.text, tokens: inputTokens,
+                            options: options, lineRange: lineRange,
+                            verbose: verbose, lint: lint, reporter: reporter
+                        )
+                        outputTokens = result.tokens
+                        lintChangesDetected = lintChangesDetected || !result.changes.isEmpty
                     }
 
                     if let outputTokens {
@@ -1249,9 +1276,10 @@ func processInput(_ inputURLs: [URL],
                 }
             } else {
                 // Regular swift file
-                let outputTokens = try applyRules(input, options: options, lineRange: lineRange,
-                                                  verbose: verbose, lint: lint, reporter: reporter)
-                output = sourceCode(for: outputTokens)
+                let result = try applyRules(input, options: options, lineRange: lineRange,
+                                            verbose: verbose, lint: lint, reporter: reporter)
+                output = sourceCode(for: result.tokens)
+                lintChangesDetected = !result.changes.isEmpty
                 if output != input {
                     sourceHash = nil
                 }
@@ -1281,7 +1309,7 @@ func processInput(_ inputURLs: [URL],
                         throw FormatError.writing("Failed to create directory at \(outputURL.path), \(error)")
                     }
                 }
-            } else if output == input {
+            } else if output == input, !lintChangesDetected {
                 // No changes needed
                 return {
                     outputFlags.filesChecked += 1

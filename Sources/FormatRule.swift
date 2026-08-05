@@ -45,6 +45,7 @@ public final class FormatRule: Hashable, Comparable, CustomStringConvertible {
     let options: [String]
     let sharedOptions: [String]
     let deprecationMessage: String?
+    let severity: RuleSeverity?
 
     /// Null rule, used for testing
     static let none: FormatRule = .init(help: "") { _ in } examples: { nil }
@@ -64,6 +65,7 @@ public final class FormatRule: Hashable, Comparable, CustomStringConvertible {
          orderAfter: [FormatRule] = [],
          options: [String] = [],
          sharedOptions: [String] = [],
+         severity: RuleSeverity? = nil,
          _ fn: @escaping (Formatter) -> Void,
          examples: () -> String?)
     {
@@ -75,7 +77,18 @@ public final class FormatRule: Hashable, Comparable, CustomStringConvertible {
         self.options = options
         self.sharedOptions = sharedOptions
         self.deprecationMessage = deprecationMessage
+        self.severity = severity
         self.examples = examples()
+    }
+
+    convenience init(
+        customName: String,
+        help: String,
+        severity: RuleSeverity,
+        _ fn: @escaping (Formatter) -> Void
+    ) {
+        self.init(help: help, severity: severity, fn, examples: { nil })
+        name = customName
     }
 
     public func apply(with formatter: Formatter) {

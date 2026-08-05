@@ -280,16 +280,42 @@ public final class Formatter: NSObject {
     /// Change record
     public struct Change: Equatable {
         public let line: Int
+        public let column: Int?
         public let rule: FormatRule
         public let filePath: String?
         public let isMove: Bool
+
+        init(
+            line: Int,
+            column: Int? = nil,
+            rule: FormatRule,
+            filePath: String?,
+            isMove: Bool
+        ) {
+            self.line = line
+            self.column = column
+            self.rule = rule
+            self.filePath = filePath
+            self.isMove = isMove
+        }
+
+        static func sourceOrder(_ lhs: Change, _ rhs: Change) -> Bool {
+            if lhs.line != rhs.line {
+                return lhs.line < rhs.line
+            }
+            if lhs.column != rhs.column {
+                return (lhs.column ?? 0) < (rhs.column ?? 0)
+            }
+            return lhs.rule.name < rhs.rule.name
+        }
 
         public var help: String {
             stripMarkdown(rule.help).replacingOccurrences(of: "\n", with: " ")
         }
 
         public func description(asError: Bool) -> String {
-            "\(filePath ?? ""):\(line):1: \(asError ? "error" : "warning"): (\(rule.name)) \(help)"
+            let severity = rule.severity ?? (asError ? .error : .warning)
+            return "\(filePath ?? ""):\(line):\(column ?? 1): \(severity.rawValue): (\(rule.name)) \(help)"
         }
     }
 
@@ -306,6 +332,18 @@ public final class Formatter: NSObject {
             rule: currentRule ?? .none,
             filePath: options.fileInfo.filePath,
             isMove: isMove
+        ))
+    }
+
+    func reportViolation(at index: Int, column: Int) {
+        updateEnablement(at: index)
+        guard !ruleDisabled, !disabled, trackChanges, range?.contains(index) != false else { return }
+        changes.append(Change(
+            line: originalLine(at: index),
+            column: column,
+            rule: currentRule ?? .none,
+            filePath: options.fileInfo.filePath,
+            isMove: false
         ))
     }
 

@@ -35,6 +35,7 @@ Table of Contents
     - [Config file](#config-file)
     - [Globs](#globs)
     - [Linting](#linting)
+    - [Custom rules](#custom-rules)
     - [Error codes](#error-codes)
     - [Cache](#cache)
     - [File headers](#file-headers)
@@ -887,6 +888,48 @@ Sometimes you may wish to autoformat some rules, but only lint others. To do tha
 --rules braces,indent
 --lint-only trailingClosures,unusedArguments
 ```
+
+Custom rules
+------------
+
+SwiftFormat can run regex-based custom lint rules defined using SwiftLint's `custom_rules` configuration format. Pass the YAML or JSON file using `--custom-rules` when running in lint mode:
+
+```bash
+$ swiftformat --lint . --custom-rules .swiftlint.yml
+```
+
+The option can also be added to `.swiftformat`. Relative paths are resolved relative to the SwiftFormat configuration file:
+
+```
+--custom-rules .swiftlint.yml
+```
+
+For example:
+
+```yaml
+custom_rules:
+  pirates_beat_ninjas:
+    included:
+      - ".*\\.swift"
+    excluded:
+      - ".*Tests\\.swift"
+    name: "Pirates Beat Ninjas"
+    regex: "([nN]inja)"
+    capture_group: 0
+    match_kinds:
+      - comment
+      - identifier
+    message: "Pirates are better than ninjas."
+    severity: error
+```
+
+The supported keys are `name`, `regex`, `capture_group`, `included`, `excluded`, `match_kinds`, `excluded_match_kinds`, `message`, and `severity`. `regex` is required; the other keys use SwiftLint's defaults. As in SwiftLint, custom regular expressions use the `s` and `m` flags, so `.` matches newlines and `^`/`$` match line boundaries.
+
+SwiftFormat reads only the `custom_rules` mapping and ignores unrelated top-level SwiftLint configuration. The supported YAML subset includes plain and quoted scalar values, scalar lists, and inline arrays. YAML block scalars, anchors, aliases, and tags are not supported.
+
+Custom rules are lint-only and never modify source files. A match causes `--lint` to return a lint failure. Rules can be disabled with standard SwiftFormat directives using their identifier, for example `// swiftformat:disable:next pirates_beat_ninjas`.
+
+The supported syntax kinds are `comment`, `doccomment`, `identifier`, `keyword`, `number`, and `string`. Other SwiftLint syntax kinds require SourceKit-specific classification and are rejected rather than approximated.
 
 
 Error codes

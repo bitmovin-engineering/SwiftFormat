@@ -71,6 +71,41 @@ private func withTmpFiles(_ files: [String: String], fn: (URL) throws -> Void) t
 }
 
 final class CommandLineTests: XCTestCase {
+    func testSwiftLintCustomRulesEndToEnd() throws {
+        try withTmpFiles([
+            "Source.swift": "let ninja = 1\n",
+            ".swiftformat": "--disable all\n--custom-rules .swiftlint.yml\n",
+            ".swiftlint.yml": #"""
+            custom_rules:
+              no_ninja:
+                regex: '\bninja\b'
+                match_kinds: identifier
+                message: "Pirates are better than ninjas."
+                severity: error
+            """#,
+        ]) { sourceURL in
+            var errors = [String]()
+            CLI.print = { message, type in
+                if type == .error {
+                    errors.append(message)
+                }
+            }
+
+            let result = processArguments([
+                "swiftformat",
+                sourceURL.path,
+                "--lint",
+                "--cache", "ignore",
+            ], in: sourceURL.deletingLastPathComponent().path)
+
+            XCTAssertEqual(result, .lintFailure)
+            XCTAssertTrue(errors.contains(where: {
+                $0.contains("(no_ninja) Pirates are better than ninjas.")
+            }))
+            XCTAssertEqual(try String(contentsOf: sourceURL), "let ninja = 1\n")
+        }
+    }
+
     // MARK: stdin
 
     func testStdin() {

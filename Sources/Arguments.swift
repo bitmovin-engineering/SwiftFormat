@@ -41,6 +41,26 @@ extension Options {
         let lint = args.keys.contains("lint")
         self.lint = lint
         rules = try rulesFor(args, lint: lint)
+        if let path = args["custom-rules"] {
+            guard !path.isEmpty else {
+                throw FormatError.options("--custom-rules option expects a path")
+            }
+            let url = try parsePath(path, for: "--custom-rules", in: directory)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw FormatError.reading("Custom rules configuration does not exist: \(url.path)")
+            }
+            do {
+                customRules = try loadCustomRules(at: url)
+            } catch let error as FormatError {
+                throw error
+            } catch {
+                throw FormatError.reading("Failed to read custom rules configuration at \(url.path), \(error)")
+            }
+            customRulesURL = url
+        } else {
+            customRules = CustomRules()
+            customRulesURL = nil
+        }
         self.filterOptions = filterOptions
     }
 
@@ -649,6 +669,9 @@ func argumentsFor(_ options: Options, excludingDefaults: Bool = false) -> [Strin
             args["disable"] = disabled.sorted().joined(separator: ",")
         }
     }
+    if let customRulesURL = options.customRulesURL {
+        args["custom-rules"] = customRulesURL.path
+    }
     return args
 }
 
@@ -852,6 +875,8 @@ let fileArguments = [
     "filter",
 ]
 
+let customRulesArguments = ["custom-rules"]
+
 let rulesArguments = [
     "disable",
     "enable",
@@ -861,7 +886,7 @@ let rulesArguments = [
 
 let formattingArguments = Descriptors.formatting.map(\.argumentName)
 let internalArguments = Descriptors.internal.map(\.argumentName)
-let optionsArguments = fileArguments + rulesArguments + formattingArguments + internalArguments
+let optionsArguments = fileArguments + rulesArguments + customRulesArguments + formattingArguments + internalArguments
 
 let commandLineArguments = [
     // Input options
