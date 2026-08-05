@@ -892,7 +892,7 @@ Sometimes you may wish to autoformat some rules, but only lint others. To do tha
 Custom rules
 ------------
 
-SwiftFormat can run regex-based custom lint rules defined using SwiftLint's `custom_rules` configuration format. Pass the YAML file using `--custom-rules` when running in lint mode:
+SwiftFormat can run regex-based custom lint rules defined using SwiftLint's `custom_rules` configuration format. Pass the YAML or JSON file using `--custom-rules` when running in lint mode:
 
 ```bash
 $ swiftformat --lint . --custom-rules .swiftlint.yml
