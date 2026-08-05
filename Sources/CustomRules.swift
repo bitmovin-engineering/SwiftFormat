@@ -501,9 +501,8 @@ private func parseCustomRules(yaml source: String) throws -> CustomRules {
                     index += 1
                 }
                 configuration[key] = .strings(values)
-            } else if rawValue == "|" || rawValue == ">" {
-                throw FormatError.options("Block scalar values are not supported at line \(optionLine.number)")
-            } else if rawValue.hasPrefix("["), rawValue.hasSuffix("]") {
+} else if rawValue.range(of: #"^[|>][+-]?[0-9]*$"#, options: .regularExpression) != nil {
+    throw FormatError.options("Block scalar values are not supported at line \(optionLine.number)")
                 configuration[key] = try .strings(parseYAMLArray(rawValue, line: optionLine.number))
             } else {
                 configuration[key] = try .string(parseYAMLScalar(rawValue, line: optionLine.number))
