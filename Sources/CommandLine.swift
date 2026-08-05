@@ -202,7 +202,7 @@ func printHelp(as type: CLI.OutputType) {
     --script-input     Read Xcode SCRIPT_INPUT_FILE* environment variables as files
     --config           Path(s) to configuration file(s) containing rules and options
     --base-config      Like --config, but local .swiftformat files aren't ignored
-    --custom-rules     Path to a SwiftLint-style YAML file containing custom_rules
+    --custom-rules     Path to a SwiftLint-style YAML or JSON file containing custom_rules
     --infer-options    Instead of formatting input, use it to infer format options
     --output           Output path for formatted file(s) (defaults to input path)
     --exclude          Comma-delimited list of ignored paths (supports glob syntax)
