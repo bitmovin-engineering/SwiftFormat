@@ -85,13 +85,15 @@ final class CustomRulesTests: XCTestCase {
     }
 
     func testBlockScalarIsRejected() {
-        XCTAssertThrowsError(try rules("""
-        custom_rules:
-          no_ninja:
-            regex: |
-              ninja
-        """)) { error in
-            XCTAssertEqual("\(error)", "Block scalar values are not supported at line 3")
+        for marker in ["|", "|-", "|+2", ">", ">-", ">+2"] {
+            XCTAssertThrowsError(try rules("""
+            custom_rules:
+              no_ninja:
+                regex: \(marker)
+                  ninja
+            """)) { error in
+                XCTAssertEqual("\(error)", "Block scalar values are not supported at line 3")
+            }
         }
     }
 
